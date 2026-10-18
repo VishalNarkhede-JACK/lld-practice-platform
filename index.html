@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLD Practice Platform</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+        textarea { width: 100%; height: 200px; margin: 10px 0; padding: 10px; font-family: monospace; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #0056b3; }
+        .box { border: 1px solid #ddd; padding: 20px; border-radius: 5px; margin-top: 20px; background: #f9f9f9; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>LLD Practice Platform</h1>
+    <p>Select a problem and submit your Low-Level Design for AI evaluation.</p>
+
+    <select id="problem-select"></select>
+    
+    <textarea id="solution-text" placeholder="Write your classes, interfaces, and design patterns here..."></textarea>
+    <button onclick="submitSolution()">Submit Design</button>
+
+    <div id="status-box" class="box hidden">
+        <h3 id="status-text">Evaluating... Please wait.</h3>
+    </div>
+
+    <div id="result-box" class="box hidden">
+        <h2>Evaluation Results</h2>
+        <h3 style="color: #28a745;">Score: <span id="score"></span>/100</h3>
+        <h4>Key Strengths:</h4>
+        <ul id="strengths"></ul>
+        <h4>Areas for Improvement:</h4>
+        <ul id="improvements"></ul>
+    </div>
+
+    <script>
+        // 1. Load problems on startup
+        window.onload = async () => {
+            const res = await fetch('/problems');
+            const problems = await res.json();
+            const select = document.getElementById('problem-select');
+            problems.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.title}</option>`;
+            });
+        };
+
+        // 2. Submit solution
+        async function submitSolution() {
+            const problemId = document.getElementById('problem-select').value;
+            const text = document.getElementById('solution-text').value;
+            
+            if(!text) return alert("Please enter a solution.");
+
+            document.getElementById('status-box').classList.remove('hidden');
+            document.getElementById('result-box').classList.add('hidden');
+            document.getElementById('status-text').innerText = "Evaluating... Please wait.";
+
+            // Send to backend
+            const res = await fetch(`/submit?problem_id=${problemId}&solution_text=${encodeURIComponent(text)}`, { method: 'POST' });
+            const data = await res.json();
+            
+            // Start checking for results
+            pollForResults(data.id);
+        }
+
+        // 3. Check backend every 2 seconds until graded
+        async function pollForResults(submissionId) {
+            const res = await fetch(`/submissions/${submissionId}`);
+            const data = await res.json();
+
+            if (data.status === "COMPLETED") {
+                document.getElementById('status-box').classList.add('hidden');
+                document.getElementById('result-box').classList.remove('hidden');
+                
+                document.getElementById('score').innerText = data.evaluation.overall_score;
+                
+                document.getElementById('strengths').innerHTML = 
+                    data.evaluation.key_strengths.map(s => `<li>${s}</li>`).join('');
+                
+                document.getElementById('improvements').innerHTML = 
+                    data.evaluation.areas_for_improvement.map(i => `<li>${i}</li>`).join('');
+            } else if (data.status === "FAILED") {
+                document.getElementById('status-text').innerText = "Evaluation failed. Please try again.";
+            } else {
+                setTimeout(() => pollForResults(submissionId), 2000);
+            }
+        }
+    </script>
+</body>
+</html>
